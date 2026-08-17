@@ -675,14 +675,11 @@ def prepare_data(df):
     # -----------------------------------------------------
 
     df["fiyat_m2"] = (
-        df["fiyat"] / df["metrekare"]
-    ).replace(
-        [float("inf"), -float("inf")],
-        pd.NA,
-    )
-
-    df["fiyat_m2"] = df["fiyat_m2"].round(2)
-
+    df["fiyat"]
+    .div(df["metrekare"])
+    .where(df["metrekare"] > 0)
+    .round(2)
+)
     today = pd.Timestamp.today().normalize()
 
     df["ilan_yasi_gun"] = (
@@ -728,6 +725,38 @@ def validate_data(df):
     ]
 
     return missing_columns
+
+def validate_data_quality(df):
+    issues = {}
+
+    invalid_price = (
+        df["fiyat"].isna()
+        | (df["fiyat"] <= 0)
+    )
+
+    invalid_area = (
+        df["metrekare"].isna()
+        | (df["metrekare"] <= 0)
+    )
+
+    invalid_date = df["ilan_tarihi"].isna()
+
+    if invalid_price.sum() > 0:
+        issues["Geçersiz fiyat"] = int(
+            invalid_price.sum()
+        )
+
+    if invalid_area.sum() > 0:
+        issues["Geçersiz metrekare"] = int(
+            invalid_area.sum()
+        )
+
+    if invalid_date.sum() > 0:
+        issues["Geçersiz ilan tarihi"] = int(
+            invalid_date.sum()
+        )
+
+    return issues
 
 
 def get_action_recommendation(row, neighborhood_avg):
@@ -1047,16 +1076,39 @@ else:
 
         df = prepare_data(mapped_df)
 
+        data_quality_issues = validate_data_quality(df)
+
+        if data_quality_issues:
+
+            st.error(
+                "Yüklenen dosyada analiz için düzeltilmesi gereken "
+                "veriler bulundu."
+            )
+
+            for issue, count in data_quality_issues.items():
+
+                st.warning(
+                    f"{issue}: {count:,} kayıt"
+                )
+
+            st.info(
+                "Lütfen dosyanızı düzelttikten sonra tekrar yükleyin."
+            )
+
+            st.stop()
+
         st.sidebar.success(
             f"{len(df):,} portföy yüklendi."
         )
 
-    except Exception as error:
+    except Exception as exc:
 
         st.error(
-            f"Dosya okunurken hata oluştu: {error}"
+            "CSV dosyası okunurken bir hata oluştu. "
+            "Lütfen dosya formatını kontrol edip tekrar deneyin."
         )
 
+        st.exception(exc)
         st.stop()
 
 
@@ -1144,9 +1196,20 @@ if selected_mahalle != "Tümü":
         == selected_mahalle
     ]
 
+st.sidebar.caption(
+    f"{len(filtered_df):,} portföy bulundu."
+)
+
 # ---------------------------------------------------------
 # PORTFÖY SEÇİMİ
 # ---------------------------------------------------------
+
+if filtered_df.empty:
+    st.info(
+        "Seçtiğiniz filtrelere uygun portföy bulunamadı. "
+        "Lütfen filtreleri değiştirerek tekrar deneyin."
+    )
+    st.stop()
 
 st.sidebar.divider()
 
