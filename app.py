@@ -207,12 +207,16 @@ def calculate_score_breakdown(row, df):
 
     # 4. Aynı mahalle + aynı ilan türü ortalaması
     comparison_df = df[
-        (df["mahalle"] == row["mahalle"])
-        & (
-            df["ilan_turu"]
-            == row["ilan_turu"]
-        )
-    ]
+    (df["mahalle"] == row["mahalle"])
+    & (
+        df["ilan_turu"]
+        == row["ilan_turu"]
+    )
+    & (
+        df["portfoy_tipi"]
+        == row["portfoy_tipi"]
+    )
+]
 
     neighborhood_avg = comparison_df[
         "fiyat_m2"
@@ -460,6 +464,66 @@ selected_row = filtered_df[
     filtered_df["ilan_id"] == selected_listing_id
 ].iloc[0]
 
+# ---------------------------------------------------------
+# PİYASA KARŞILAŞTIRMASI
+# ---------------------------------------------------------
+
+similar_properties = df[
+    (df["mahalle"] == selected_row["mahalle"])
+    & (df["ilan_turu"] == selected_row["ilan_turu"])
+    & (
+        df["portfoy_tipi"]
+        == selected_row["portfoy_tipi"]
+    )
+].copy()
+
+market_avg_price_m2 = similar_properties[
+    "fiyat_m2"
+].mean()
+
+selected_price_m2 = float(
+    selected_row["fiyat_m2"]
+)
+
+if market_avg_price_m2 > 0:
+    market_difference_percent = (
+        (
+            selected_price_m2
+            - market_avg_price_m2
+        )
+        / market_avg_price_m2
+        * 100
+    )
+else:
+    market_difference_percent = 0
+
+
+# ---------------------------------------------------------
+# RİSK SEVİYESİ
+# ---------------------------------------------------------
+
+priority_score = float(
+    selected_row["portfoy_oncelik_skoru"]
+)
+
+if priority_score >= 70:
+    risk_level = "🔴 Yüksek"
+    risk_text = (
+        "Bu portföy yakın takip ve aksiyon gerektiriyor."
+    )
+
+elif priority_score >= 40:
+    risk_level = "🟡 Orta"
+    risk_text = (
+        "Bu portföy düzenli takip edilmeli."
+    )
+
+else:
+    risk_level = "🟢 Düşük"
+    risk_text = (
+        "Bu portföy için şu anda kritik bir durum görünmüyor."
+    )
+
 
 neighborhood_avg = (
     filtered_df[
@@ -545,6 +609,101 @@ with detail_right:
 
     st.info(action)
 
+
+# ---------------------------------------------------------
+# KARAR MERKEZİ
+# ---------------------------------------------------------
+
+st.subheader("🎯 Karar Merkezi")
+
+decision_col1, decision_col2, decision_col3 = st.columns(3)
+
+
+with decision_col1:
+
+    st.markdown("### 📊 Piyasa Durumu")
+
+    st.metric(
+        "İlan Fiyatı / m²",
+        f"{selected_price_m2:,.0f} TL",
+    )
+
+    st.metric(
+        "Benzer Portföy Ortalaması",
+        f"{market_avg_price_m2:,.0f} TL",
+    )
+
+    if market_difference_percent > 0:
+
+        st.warning(
+            f"İlan, benzer portföylere göre "
+            f"%{market_difference_percent:.1f} daha yüksek."
+        )
+
+    elif market_difference_percent < 0:
+
+        st.success(
+            f"İlan, benzer portföylere göre "
+            f"%{abs(market_difference_percent):.1f} daha düşük."
+        )
+
+    else:
+
+        st.info(
+            "İlan fiyatı benzer portföylerin ortalamasına yakın."
+        )
+
+
+with decision_col2:
+
+    st.markdown("### ⚠️ Risk Özeti")
+
+    st.metric(
+        "Risk Seviyesi",
+        risk_level,
+    )
+
+    st.caption(risk_text)
+
+    st.caption(
+        f"{len(similar_properties)} benzer "
+        f"portföy üzerinden karşılaştırıldı."
+    )
+
+    st.caption(
+        f"İlan yaşı: "
+        f"{int(selected_row['ilan_yasi_gun'])} gün"
+    )
+
+    st.caption(
+        f"Fiyat değişimi: "
+        f"{selected_row['fiyat_degisimi_yuzde']:+.1f}%"
+    )
+
+
+with decision_col3:
+
+    st.markdown("### 💡 Önerilen Aksiyon")
+
+    st.info(action)
+
+    if priority_score >= 70:
+
+        st.warning(
+            "Bu portföy için aksiyon öncelikli."
+        )
+
+    elif priority_score >= 40:
+
+        st.info(
+            "Portföyü takip listesinde tutun."
+        )
+
+    else:
+
+        st.success(
+            "Şimdilik rutin takip yeterli."
+        )
 
 st.divider()
 
