@@ -30,16 +30,118 @@ REQUIRED_COLUMNS = [
     "oda_sayisi",
     "metrekare",
     "fiyat",
-    "onceki_fiyat",
     "ilan_tarihi",
-    "son_fiyat_guncelleme",
-    "durum",
-    "fiyat_m2",
-    "ilan_yasi_gun",
-    "fiyat_degisimi_yuzde",
-    "portfoy_oncelik_skoru",
 ]
 
+COLUMN_ALIASES = {
+    "ilan_id": [
+        "ilan_id",
+        "ilan no",
+        "ilan_no",
+        "ilan numarası",
+        "ilan numarasi",
+        "ilan kodu",
+        "ilan_kodu",
+        "id",
+    ],
+
+    "portfoy_tipi": [
+        "portfoy_tipi",
+        "portföy tipi",
+        "portfoy tipi",
+        "tip",
+        "emlak tipi",
+        "gayrimenkul tipi",
+        "tür",
+        "tur",
+    ],
+
+    "ilan_turu": [
+        "ilan_turu",
+        "ilan türü",
+        "ilan turu",
+        "işlem türü",
+        "islem turu",
+        "satış/kiralık",
+        "satis/kiralik",
+        "satis_kiralik",
+    ],
+
+    "mahalle": [
+        "mahalle",
+        "mahalle adı",
+        "mahalle adi",
+        "semt",
+        "bölge",
+        "bolge",
+    ],
+
+    "oda_sayisi": [
+        "oda_sayisi",
+        "oda sayısı",
+        "oda sayisi",
+        "oda",
+        "oda tipi",
+        "oda tipi",
+    ],
+
+    "metrekare": [
+        "metrekare",
+        "m²",
+        "m2",
+        "m² net",
+        "m2 net",
+        "alan",
+        "alan m2",
+        "alan (m2)",
+    ],
+
+    "fiyat": [
+        "fiyat",
+        "satış fiyatı",
+        "satis fiyati",
+        "satış fiyat",
+        "satis fiyat",
+        "kira",
+        "kira fiyatı",
+        "kira fiyati",
+        "bedel",
+    ],
+
+    "onceki_fiyat": [
+        "onceki_fiyat",
+        "önceki fiyat",
+        "onceki fiyat",
+        "eski fiyat",
+        "eski fiyatı",
+        "eski fiyati",
+    ],
+
+    "ilan_tarihi": [
+        "ilan_tarihi",
+        "ilan tarihi",
+        "yayın tarihi",
+        "yayin tarihi",
+        "oluşturulma tarihi",
+        "olusturulma tarihi",
+    ],
+
+    "son_fiyat_guncelleme": [
+        "son_fiyat_guncelleme",
+        "son fiyat güncelleme",
+        "son fiyat güncellemesi",
+        "fiyat güncelleme tarihi",
+        "fiyat güncelleme",
+    ],
+
+    "durum": [
+        "durum",
+        "ilan durumu",
+        "aktiflik",
+        "aktif/pasif",
+        "aktif pasif",
+    ],
+}
 
 @st.cache_data
 def load_data(file):
@@ -48,10 +150,70 @@ def load_data(file):
     return prepare_data(df)
 
 
+def normalize_column_name(name):
+    return (
+        str(name)
+        .strip()
+        .lower()
+        .replace("_", " ")
+        .replace("-", " ")
+    )
+
+
+def map_columns(df):
+    df = df.copy()
+
+    normalized_columns = {
+        normalize_column_name(column): column
+        for column in df.columns
+    }
+
+    rename_map = {}
+
+    for target_column, aliases in COLUMN_ALIASES.items():
+
+        for alias in aliases:
+
+            normalized_alias = normalize_column_name(alias)
+
+            if normalized_alias in normalized_columns:
+                original_column = normalized_columns[
+                    normalized_alias
+                ]
+
+                rename_map[original_column] = target_column
+                break
+
+    df = df.rename(columns=rename_map)
+
+    return df
+
 def prepare_data(df):
     df = df.copy()
 
-    # Tarih alanları
+    # -----------------------------------------------------
+    # KOLONLARI TANIMA
+    # -----------------------------------------------------
+
+    df = map_columns(df)
+
+    # -----------------------------------------------------
+    # OPSİYONEL ALANLAR
+    # -----------------------------------------------------
+
+    if "onceki_fiyat" not in df.columns:
+        df["onceki_fiyat"] = df["fiyat"]
+
+    if "son_fiyat_guncelleme" not in df.columns:
+        df["son_fiyat_guncelleme"] = pd.NaT
+
+    if "durum" not in df.columns:
+        df["durum"] = "Aktif"
+
+    # -----------------------------------------------------
+    # TARİHLER
+    # -----------------------------------------------------
+
     df["ilan_tarihi"] = pd.to_datetime(
         df["ilan_tarihi"],
         errors="coerce",
@@ -62,38 +224,82 @@ def prepare_data(df):
         errors="coerce",
     )
 
-    # Sayısal alanlar
+    # -----------------------------------------------------
+    # SAYISAL ALANLAR
+    # -----------------------------------------------------
+
     numeric_columns = [
         "metrekare",
         "fiyat",
         "onceki_fiyat",
-        "fiyat_m2",
-        "ilan_yasi_gun",
-        "fiyat_degisimi_yuzde",
-        "portfoy_oncelik_skoru",
     ]
 
     for column in numeric_columns:
+        df[column] = (
+            df[column]
+            .astype(str)
+            .str.replace(".", "", regex=False)
+            .str.replace(",", ".", regex=False)
+            .str.replace("TL", "", regex=False)
+            .str.strip()
+        )
+
         df[column] = pd.to_numeric(
             df[column],
             errors="coerce",
         )
 
+    # -----------------------------------------------------
+    # HESAPLANAN ALANLAR
+    # -----------------------------------------------------
+
+    df["fiyat_m2"] = (
+        df["fiyat"] / df["metrekare"]
+    ).replace(
+        [float("inf"), -float("inf")],
+        pd.NA,
+    )
+
+    df["fiyat_m2"] = df["fiyat_m2"].round(2)
+
+    today = pd.Timestamp.today().normalize()
+
+    df["ilan_yasi_gun"] = (
+        today - df["ilan_tarihi"]
+    ).dt.days.clip(lower=0)
+
+    df["fiyat_degisimi_yuzde"] = (
+        (
+            df["fiyat"]
+            - df["onceki_fiyat"]
+        )
+        / df["onceki_fiyat"]
+        * 100
+    ).replace(
+        [float("inf"), -float("inf")],
+        0,
+    )
+
+    df["fiyat_degisimi_yuzde"] = (
+        df["fiyat_degisimi_yuzde"]
+        .fillna(0)
+        .round(2)
+    )
+
+    # -----------------------------------------------------
+    # ÖNCELİK SKORU
+    # -----------------------------------------------------
+
+    df["portfoy_oncelik_skoru"] = (
+        calculate_priority_score(df)
+    )
+
     return df
 
 
 def validate_data(df):
-    def get_priority_level(score):
-        if score >= 70:
-            return "🔴 Yüksek Öncelik"
+    df = map_columns(df)
 
-    if score >= 40:
-        return "🟡 Orta Öncelik"
-
-    return "🟢 Düşük Öncelik"
-
-
-def validate_data(df):
     missing_columns = [
         column
         for column in REQUIRED_COLUMNS
@@ -172,6 +378,77 @@ def get_action_recommendation(row, neighborhood_avg):
         )
 
     return reasons, action
+
+def calculate_priority_score(df):
+    score = pd.Series(
+        0.0,
+        index=df.index,
+    )
+
+    # İlan yaşı — maksimum 40
+    age_score = (
+        df["ilan_yasi_gun"]
+        / 180
+        * 40
+    ).clip(
+        lower=0,
+        upper=40,
+    )
+
+    score += age_score
+
+    # Fiyat değişimi — maksimum 30
+    price_change_score = (
+        -df["fiyat_degisimi_yuzde"]
+        / 15
+        * 30
+    ).clip(
+        lower=0,
+        upper=30,
+    )
+
+    score += price_change_score
+
+    # Fiyat güncellemesi yok — 10
+    no_update = (
+        df["son_fiyat_guncelleme"]
+        .isna()
+    )
+
+    score += (
+        no_update.astype(int) * 10
+    )
+
+    # Aynı mahalle + ilan türü + portföy tipi
+    neighborhood_avg = (
+        df.groupby(
+            [
+                "mahalle",
+                "ilan_turu",
+                "portfoy_tipi",
+            ]
+        )["fiyat_m2"]
+        .transform("mean")
+    )
+
+    price_ratio = (
+        df["fiyat_m2"]
+        / neighborhood_avg
+    )
+
+    expensive_score = (
+        (price_ratio - 1) * 100
+    ).clip(
+        lower=0,
+        upper=20,
+    )
+
+    score += expensive_score
+
+    return score.clip(
+        lower=0,
+        upper=100,
+    ).round(1)
 
 
 def calculate_score_breakdown(row, df):
@@ -325,21 +602,31 @@ else:
     try:
         uploaded_df = pd.read_csv(uploaded_file)
 
-        missing_columns = validate_data(uploaded_df)
+        mapped_df = map_columns(uploaded_df)
+
+        missing_columns = [
+            column
+            for column in REQUIRED_COLUMNS
+            if column not in mapped_df.columns
+        ]
 
         if missing_columns:
 
             st.error(
-                "Dosyanızda gerekli kolonlar bulunmuyor:"
+                "Dosyanızdaki bazı temel alanlar tanınamadı:"
             )
 
             st.code(
                 "\n".join(missing_columns)
             )
 
+            st.info(
+                "Gerekli temel alanları ekleyip dosyayı tekrar yükleyin."
+            )
+
             st.stop()
 
-        df = prepare_data(uploaded_df)
+        df = prepare_data(mapped_df)
 
         st.sidebar.success(
             f"{len(df):,} portföy yüklendi."
