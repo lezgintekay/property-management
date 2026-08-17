@@ -16,80 +16,25 @@ st.set_page_config(
 
 
 # ---------------------------------------------------------
-# VERİ YÜKLEME
+# VERİYİ YÜKLE
 # ---------------------------------------------------------
 
 DATA_FILE = Path("data/emlak_portfoyleri.csv")
 
 
-REQUIRED_COLUMNS = [
-    "ilan_id",
-    "portfoy_tipi",
-    "ilan_turu",
-    "mahalle",
-    "oda_sayisi",
-    "metrekare",
-    "fiyat",
-    "onceki_fiyat",
-    "ilan_tarihi",
-    "son_fiyat_guncelleme",
-    "durum",
-    "fiyat_m2",
-    "ilan_yasi_gun",
-    "fiyat_degisimi_yuzde",
-    "portfoy_oncelik_skoru",
-]
-
-
 @st.cache_data
-def load_data(file):
-    df = pd.read_csv(file)
+def load_data():
+    df = pd.read_csv(DATA_FILE)
 
-    return prepare_data(df)
-
-
-def prepare_data(df):
-    df = df.copy()
-
-    # Tarih alanları
-    df["ilan_tarihi"] = pd.to_datetime(
-        df["ilan_tarihi"],
-        errors="coerce",
-    )
-
+    df["ilan_tarihi"] = pd.to_datetime(df["ilan_tarihi"])
     df["son_fiyat_guncelleme"] = pd.to_datetime(
-        df["son_fiyat_guncelleme"],
-        errors="coerce",
+        df["son_fiyat_guncelleme"]
     )
-
-    # Sayısal alanlar
-    numeric_columns = [
-        "metrekare",
-        "fiyat",
-        "onceki_fiyat",
-        "fiyat_m2",
-        "ilan_yasi_gun",
-        "fiyat_degisimi_yuzde",
-        "portfoy_oncelik_skoru",
-    ]
-
-    for column in numeric_columns:
-        df[column] = pd.to_numeric(
-            df[column],
-            errors="coerce",
-        )
 
     return df
 
 
-def validate_data(df):
-    missing_columns = [
-        column
-        for column in REQUIRED_COLUMNS
-        if column not in df.columns
-    ]
-
-    return missing_columns
+df = load_data()
 
 
 # ---------------------------------------------------------
@@ -100,102 +45,20 @@ st.title("🏠 Emlak Portföy Analizörü")
 
 st.markdown(
     """
-    Emlak portföyünüzü analiz edin, uzun süredir bekleyen
+    Portföylerinizi analiz edin, uzun süredir bekleyen
     ilanları ve fiyat değişimlerini kolayca takip edin.
     """
 )
 
 
 # ---------------------------------------------------------
-# VERİ KAYNAĞI
-# ---------------------------------------------------------
-
-st.sidebar.header("📂 Veri Kaynağı")
-
-data_source = st.sidebar.radio(
-    "Veri kaynağını seçin",
-    [
-        "Demo verisi",
-        "Kendi dosyamı yükle",
-    ],
-)
-
-
-if data_source == "Demo verisi":
-
-    df = load_data(DATA_FILE)
-
-    st.sidebar.success(
-        "500 adet örnek Tarsus portföyü kullanılıyor."
-    )
-
-else:
-
-    uploaded_file = st.sidebar.file_uploader(
-        "CSV dosyanızı yükleyin",
-        type=["csv"],
-        help=(
-            "Emlak portföyünüzü CSV formatında yükleyin."
-        ),
-    )
-
-    if uploaded_file is None:
-
-        st.info(
-            "👈 Analiz yapmak için sol menüden "
-            "CSV dosyanızı yükleyin."
-        )
-
-        st.stop()
-
-    try:
-        uploaded_df = pd.read_csv(uploaded_file)
-
-        missing_columns = validate_data(uploaded_df)
-
-        if missing_columns:
-
-            st.error(
-                "Dosyanızda gerekli kolonlar bulunmuyor:"
-            )
-
-            st.code(
-                "\n".join(missing_columns)
-            )
-
-            st.stop()
-
-        df = prepare_data(uploaded_df)
-
-        st.sidebar.success(
-            f"{len(df):,} portföy yüklendi."
-        )
-
-    except Exception as error:
-
-        st.error(
-            f"Dosya okunurken hata oluştu: {error}"
-        )
-
-        st.stop()
-
-
-# ---------------------------------------------------------
 # SIDEBAR FİLTRELER
 # ---------------------------------------------------------
 
-st.sidebar.divider()
-
 st.sidebar.header("🔎 Filtreler")
 
-
-ilan_turu_options = [
-    "Tümü"
-] + sorted(
-    df["ilan_turu"]
-    .dropna()
-    .unique()
-    .tolist()
+ilan_turu_options = ["Tümü"] + sorted(
+    df["ilan_turu"].unique().tolist()
 )
 
 selected_ilan_turu = st.sidebar.selectbox(
@@ -203,14 +66,8 @@ selected_ilan_turu = st.sidebar.selectbox(
     ilan_turu_options,
 )
 
-
-portfoy_options = [
-    "Tümü"
-] + sorted(
-    df["portfoy_tipi"]
-    .dropna()
-    .unique()
-    .tolist()
+portfoy_options = ["Tümü"] + sorted(
+    df["portfoy_tipi"].unique().tolist()
 )
 
 selected_portfoy = st.sidebar.selectbox(
@@ -218,14 +75,8 @@ selected_portfoy = st.sidebar.selectbox(
     portfoy_options,
 )
 
-
-mahalle_options = [
-    "Tümü"
-] + sorted(
-    df["mahalle"]
-    .dropna()
-    .unique()
-    .tolist()
+mahalle_options = ["Tümü"] + sorted(
+    df["mahalle"].unique().tolist()
 )
 
 selected_mahalle = st.sidebar.selectbox(
@@ -240,62 +91,49 @@ selected_mahalle = st.sidebar.selectbox(
 
 filtered_df = df.copy()
 
-
 if selected_ilan_turu != "Tümü":
-
     filtered_df = filtered_df[
-        filtered_df["ilan_turu"]
-        == selected_ilan_turu
+        filtered_df["ilan_turu"] == selected_ilan_turu
     ]
-
 
 if selected_portfoy != "Tümü":
-
     filtered_df = filtered_df[
-        filtered_df["portfoy_tipi"]
-        == selected_portfoy
+        filtered_df["portfoy_tipi"] == selected_portfoy
     ]
 
-
 if selected_mahalle != "Tümü":
-
     filtered_df = filtered_df[
-        filtered_df["mahalle"]
-        == selected_mahalle
+        filtered_df["mahalle"] == selected_mahalle
     ]
 
 
 # ---------------------------------------------------------
-# KPI
+# KPI HESAPLARI
 # ---------------------------------------------------------
 
 total_listings = len(filtered_df)
 
 sale_count = len(
     filtered_df[
-        filtered_df["ilan_turu"]
-        == "Satılık"
+        filtered_df["ilan_turu"] == "Satılık"
     ]
 )
 
 rent_count = len(
     filtered_df[
-        filtered_df["ilan_turu"]
-        == "Kiralık"
+        filtered_df["ilan_turu"] == "Kiralık"
     ]
 )
 
 old_listing_count = len(
     filtered_df[
-        filtered_df["ilan_yasi_gun"]
-        >= 60
+        filtered_df["ilan_yasi_gun"] >= 60
     ]
 )
 
 price_drop_count = len(
     filtered_df[
-        filtered_df["fiyat_degisimi_yuzde"]
-        < 0
+        filtered_df["fiyat_degisimi_yuzde"] < 0
     ]
 )
 
@@ -306,30 +144,25 @@ price_drop_count = len(
 
 col1, col2, col3, col4, col5 = st.columns(5)
 
-
 col1.metric(
     "Toplam Portföy",
     f"{total_listings:,}",
 )
-
 
 col2.metric(
     "Satılık",
     f"{sale_count:,}",
 )
 
-
 col3.metric(
     "Kiralık",
     f"{rent_count:,}",
 )
 
-
 col4.metric(
     "60+ Günlük",
     f"{old_listing_count:,}",
 )
-
 
 col5.metric(
     "Fiyatı Düşen",
@@ -344,14 +177,11 @@ st.divider()
 # MAHALLE ANALİZİ
 # ---------------------------------------------------------
 
-st.subheader("📊 Mahalle Bazlı Satılık Fiyat Analizi")
-
+st.subheader("📊 Mahalle Bazlı Analiz")
 
 sale_df = filtered_df[
-    filtered_df["ilan_turu"]
-    == "Satılık"
+    filtered_df["ilan_turu"] == "Satılık"
 ].copy()
-
 
 if not sale_df.empty:
 
@@ -359,14 +189,8 @@ if not sale_df.empty:
         sale_df
         .groupby("mahalle")
         .agg(
-            ortalama_fiyat_m2=(
-                "fiyat_m2",
-                "mean",
-            ),
-            portfoy_sayisi=(
-                "ilan_id",
-                "count",
-            ),
+            ortalama_fiyat_m2=("fiyat_m2", "mean"),
+            portfoy_sayisi=("ilan_id", "count"),
         )
         .reset_index()
         .sort_values(
@@ -377,29 +201,22 @@ if not sale_df.empty:
 
     neighborhood_analysis[
         "ortalama_fiyat_m2"
-    ] = (
-        neighborhood_analysis[
-            "ortalama_fiyat_m2"
-        ]
-        .round(0)
-    )
+    ] = neighborhood_analysis[
+        "ortalama_fiyat_m2"
+    ].round(0)
 
     st.bar_chart(
-        neighborhood_analysis.set_index(
-            "mahalle"
-        )["ortalama_fiyat_m2"]
+        neighborhood_analysis.set_index("mahalle")[
+            "ortalama_fiyat_m2"
+        ]
     )
 
 else:
-
-    st.info(
-        "Mahalle analizi için satılık "
-        "portföy bulunamadı."
-    )
+    st.info("Mahalle analizi için satılık portföy bulunamadı.")
 
 
 # ---------------------------------------------------------
-# İKİ SÜTUN
+# İKİ SÜTUNLU ANALİZ
 # ---------------------------------------------------------
 
 left_col, right_col = st.columns(2)
@@ -411,9 +228,7 @@ left_col, right_col = st.columns(2)
 
 with left_col:
 
-    st.subheader(
-        "🔥 Öncelikli Portföyler"
-    )
+    st.subheader("🔥 Öncelikli Portföyler")
 
     priority_df = (
         filtered_df
@@ -438,22 +253,12 @@ with left_col:
 
     priority_display["fiyat"] = (
         priority_display["fiyat"]
-        .map(
-            lambda x:
-            f"{x:,.0f} TL"
-        )
+        .map(lambda x: f"{x:,.0f} TL")
     )
 
-    priority_display[
-        "portfoy_oncelik_skoru"
-    ] = (
-        priority_display[
-            "portfoy_oncelik_skoru"
-        ]
-        .map(
-            lambda x:
-            f"{x:.1f}"
-        )
+    priority_display["portfoy_oncelik_skoru"] = (
+        priority_display["portfoy_oncelik_skoru"]
+        .map(lambda x: f"{x:.1f}")
     )
 
     st.dataframe(
@@ -469,15 +274,11 @@ with left_col:
 
 with right_col:
 
-    st.subheader(
-        "⏳ Uzun Süredir Bekleyenler"
-    )
+    st.subheader("⏳ Uzun Süredir Bekleyenler")
 
     old_df = (
         filtered_df[
-            filtered_df[
-                "ilan_yasi_gun"
-            ] >= 60
+            filtered_df["ilan_yasi_gun"] >= 60
         ]
         .sort_values(
             "ilan_yasi_gun",
@@ -499,10 +300,7 @@ with right_col:
 
     old_display["fiyat"] = (
         old_display["fiyat"]
-        .map(
-            lambda x:
-            f"{x:,.0f} TL"
-        )
+        .map(lambda x: f"{x:,.0f} TL")
     )
 
     st.dataframe(
@@ -516,19 +314,14 @@ st.divider()
 
 
 # ---------------------------------------------------------
-# FİYAT DEĞİŞİMLERİ
+# FİYATI DÜŞEN PORTFÖYLER
 # ---------------------------------------------------------
 
-st.subheader(
-    "📉 Fiyatı Değişen Portföyler"
-)
-
+st.subheader("📉 Fiyatı Değişen Portföyler")
 
 price_changed = (
     filtered_df[
-        filtered_df[
-            "fiyat_degisimi_yuzde"
-        ] != 0
+        filtered_df["fiyat_degisimi_yuzde"] != 0
     ]
     .sort_values(
         "fiyat_degisimi_yuzde"
@@ -536,7 +329,6 @@ price_changed = (
     .head(15)
     .copy()
 )
-
 
 if not price_changed.empty:
 
@@ -553,30 +345,17 @@ if not price_changed.empty:
 
     price_display["fiyat"] = (
         price_display["fiyat"]
-        .map(
-            lambda x:
-            f"{x:,.0f} TL"
-        )
+        .map(lambda x: f"{x:,.0f} TL")
     )
 
     price_display["onceki_fiyat"] = (
         price_display["onceki_fiyat"]
-        .map(
-            lambda x:
-            f"{x:,.0f} TL"
-        )
+        .map(lambda x: f"{x:,.0f} TL")
     )
 
-    price_display[
-        "fiyat_degisimi_yuzde"
-    ] = (
-        price_display[
-            "fiyat_degisimi_yuzde"
-        ]
-        .map(
-            lambda x:
-            f"{x:+.2f}%"
-        )
+    price_display["fiyat_degisimi_yuzde"] = (
+        price_display["fiyat_degisimi_yuzde"]
+        .map(lambda x: f"{x:+.2f}%")
     )
 
     st.dataframe(
@@ -586,20 +365,14 @@ if not price_changed.empty:
     )
 
 else:
-
-    st.info(
-        "Filtrelere uygun fiyat değişikliği "
-        "bulunamadı."
-    )
+    st.info("Filtrelere uygun fiyat değişikliği bulunamadı.")
 
 
 # ---------------------------------------------------------
 # TÜM PORTFÖYLER
 # ---------------------------------------------------------
 
-with st.expander(
-    "📋 Tüm Filtrelenmiş Portföyleri Gör"
-):
+with st.expander("📋 Tüm Filtrelenmiş Portföyleri Gör"):
 
     st.dataframe(
         filtered_df,
