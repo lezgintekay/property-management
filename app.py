@@ -93,6 +93,16 @@ def validate_data(df):
     return "🟢 Düşük Öncelik"
 
 
+def validate_data(df):
+    missing_columns = [
+        column
+        for column in REQUIRED_COLUMNS
+        if column not in df.columns
+    ]
+
+    return missing_columns
+
+
 def get_action_recommendation(row, neighborhood_avg):
     reasons = []
 
@@ -162,14 +172,95 @@ def get_action_recommendation(row, neighborhood_avg):
         )
 
     return reasons, action
-    missing_columns = [
-        column
-        for column in REQUIRED_COLUMNS
-        if column not in df.columns
+
+
+def calculate_score_breakdown(row, df):
+    """
+    Seçilen portföyün öncelik skorunun
+    hangi kriterlerden oluştuğunu hesaplar.
+    """
+
+    # 1. İlan yaşı — maksimum 40 puan
+    age_score = min(
+        max(
+            row["ilan_yasi_gun"] / 180 * 40,
+            0,
+        ),
+        40,
+    )
+
+    # 2. Fiyat değişimi — maksimum 30 puan
+    price_change_score = min(
+        max(
+            -row["fiyat_degisimi_yuzde"] / 15 * 30,
+            0,
+        ),
+        30,
+    )
+
+    # 3. Fiyat güncellemesi yok — 10 puan
+    no_update_score = (
+        10
+        if pd.isna(row["son_fiyat_guncelleme"])
+        else 0
+    )
+
+    # 4. Aynı mahalle + aynı ilan türü ortalaması
+    comparison_df = df[
+        (df["mahalle"] == row["mahalle"])
+        & (
+            df["ilan_turu"]
+            == row["ilan_turu"]
+        )
     ]
 
-    return missing_columns
+    neighborhood_avg = comparison_df[
+        "fiyat_m2"
+    ].mean()
 
+    if neighborhood_avg > 0:
+        price_ratio = (
+            row["fiyat_m2"]
+            / neighborhood_avg
+        )
+
+        expensive_score = min(
+            max(
+                (price_ratio - 1) * 100,
+                0,
+            ),
+            20,
+        )
+    else:
+        expensive_score = 0
+
+    total_score = min(
+        age_score
+        + price_change_score
+        + no_update_score
+        + expensive_score,
+        100,
+    )
+
+    return {
+        "İlan yaşı": round(age_score, 1),
+        "Fiyat değişimi": round(
+            price_change_score,
+            1,
+        ),
+        "Fiyat güncellemesi": round(
+            no_update_score,
+            1,
+        ),
+        "Bölge fiyat farkı": round(
+            expensive_score,
+            1,
+        ),
+        "Toplam": round(
+            total_score,
+            1,
+        ),
+    }
 
 # ---------------------------------------------------------
 # BAŞLIK
@@ -456,6 +547,79 @@ with detail_right:
 
 
 st.divider()
+
+# ---------------------------------------------------------
+# SKOR AÇIKLAMASI
+# ---------------------------------------------------------
+
+score_breakdown = calculate_score_breakdown(
+    selected_row,
+    df,
+)
+
+with st.expander("📊 Öncelik skoru nasıl hesaplanıyor?"):
+
+    st.markdown(
+        """
+        Öncelik skoru, portföyün emlakçı tarafından
+        tekrar değerlendirilme ihtiyacını ölçmek için
+        dört farklı kriter kullanır.
+        """
+    )
+
+    score_col1, score_col2 = st.columns(2)
+
+    with score_col1:
+
+        st.metric(
+            "İlan yaşı",
+            f"+{score_breakdown['İlan yaşı']} puan",
+        )
+
+        st.caption(
+            "İlan 180 güne yaklaştıkça "
+            "öncelik puanı artar. Maksimum 40 puan."
+        )
+
+        st.metric(
+            "Fiyat değişimi",
+            f"+{score_breakdown['Fiyat değişimi']} puan",
+        )
+
+        st.caption(
+            "Fiyat indirimi yapılmışsa öncelik artar. "
+            "Maksimum 30 puan."
+        )
+
+    with score_col2:
+
+        st.metric(
+            "Fiyat güncellemesi",
+            f"+{score_breakdown['Fiyat güncellemesi']} puan",
+        )
+
+        st.caption(
+            "Uzun süredir fiyat güncellenmeyen "
+            "portföylere 10 puan eklenir."
+        )
+
+        st.metric(
+            "Bölge fiyat farkı",
+            f"+{score_breakdown['Bölge fiyat farkı']} puan",
+        )
+
+        st.caption(
+            "Aynı mahalle ve ilan türündeki ortalamaya "
+            "göre yüksek fiyatlı portföylere maksimum "
+            "20 puan eklenir."
+        )
+
+    st.divider()
+
+    st.metric(
+        "Hesaplanan toplam skor",
+        f"{score_breakdown['Toplam']} / 100",
+    )
 
 # ---------------------------------------------------------
 # KPI

@@ -238,7 +238,6 @@ def main():
 # ---------------------------------------------------------
 
 def calculate_priority_score(df):
-  def calculate_priority_score(df):
     score = pd.Series(0.0, index=df.index)
 
     # -----------------------------------------------------
@@ -305,7 +304,6 @@ def calculate_priority_score(df):
         lower=0,
         upper=100,
     ).round(1)
-
 
 if __name__ == "__main__":
     main()
