@@ -83,6 +83,85 @@ def prepare_data(df):
 
 
 def validate_data(df):
+    def get_priority_level(score):
+        if score >= 70:
+            return "🔴 Yüksek Öncelik"
+
+    if score >= 40:
+        return "🟡 Orta Öncelik"
+
+    return "🟢 Düşük Öncelik"
+
+
+def get_action_recommendation(row, neighborhood_avg):
+    reasons = []
+
+    age = int(row["ilan_yasi_gun"])
+    price_change = float(row["fiyat_degisimi_yuzde"])
+    price_m2 = float(row["fiyat_m2"])
+
+    # İlan yaşı
+    if age >= 120:
+        reasons.append(
+            f"İlan {age} gündür aktif."
+        )
+    elif age >= 60:
+        reasons.append(
+            f"İlan {age} gündür aktif."
+        )
+
+    # Fiyat güncellemesi
+    if pd.isna(row["son_fiyat_guncelleme"]):
+        reasons.append(
+            "İlan için henüz fiyat güncellemesi yapılmamış."
+        )
+
+    # Fiyat değişimi
+    if price_change <= -5:
+        reasons.append(
+            f"Fiyat daha önce %{abs(price_change):.1f} düşürülmüş."
+        )
+
+    # Mahalle ortalaması
+    if neighborhood_avg > 0:
+        ratio = price_m2 / neighborhood_avg
+
+        if ratio >= 1.15:
+            reasons.append(
+                "Fiyat/m² mahalle ortalamasının belirgin şekilde üzerinde."
+            )
+
+        elif ratio >= 1.05:
+            reasons.append(
+                "Fiyat/m² mahalle ortalamasının üzerinde."
+            )
+
+    # Aksiyon
+    if age >= 120 and price_m2 > neighborhood_avg:
+        action = (
+            "Mal sahibiyle fiyat revizyonu görüşülmesi "
+            "önerilir."
+        )
+
+    elif age >= 90:
+        action = (
+            "Portföy sahibinden fiyat ve satış beklentisi "
+            "tekrar değerlendirilmelidir."
+        )
+
+    elif price_change <= -5:
+        action = (
+            "Fiyat değişiminin ilan performansına etkisi "
+            "kontrol edilmelidir."
+        )
+
+    else:
+        action = (
+            "Portföy mevcut koşullarda takip edilmeye "
+            "devam edilebilir."
+        )
+
+    return reasons, action
     missing_columns = [
         column
         for column in REQUIRED_COLUMNS
@@ -263,7 +342,120 @@ if selected_mahalle != "Tümü":
         filtered_df["mahalle"]
         == selected_mahalle
     ]
+    
+# ---------------------------------------------------------
+# PORTFÖY SEÇİMİ
+# ---------------------------------------------------------
 
+st.sidebar.divider()
+
+st.sidebar.header("🏠 Portföy Seç")
+
+portfolio_options = (
+    filtered_df["ilan_id"]
+    .dropna()
+    .tolist()
+)
+
+selected_listing_id = st.sidebar.selectbox(
+    "İlan",
+    portfolio_options,
+)
+# ---------------------------------------------------------
+# PORTFÖY DETAYI
+# ---------------------------------------------------------
+
+selected_row = filtered_df[
+    filtered_df["ilan_id"] == selected_listing_id
+].iloc[0]
+
+
+neighborhood_avg = (
+    filtered_df[
+        (filtered_df["mahalle"] == selected_row["mahalle"])
+        & (
+            filtered_df["ilan_turu"]
+            == selected_row["ilan_turu"]
+        )
+    ]["fiyat_m2"]
+    .mean()
+)
+
+
+reasons, action = get_action_recommendation(
+    selected_row,
+    neighborhood_avg,
+)
+
+
+st.subheader("🎯 Seçilen Portföy")
+
+
+detail_col1, detail_col2, detail_col3, detail_col4 = st.columns(4)
+
+
+detail_col1.metric(
+    "İlan",
+    selected_row["ilan_id"],
+)
+
+
+detail_col2.metric(
+    "Fiyat",
+    f"{selected_row['fiyat']:,.0f} TL",
+)
+
+
+detail_col3.metric(
+    "Alan",
+    f"{selected_row['metrekare']:,.0f} m²",
+)
+
+
+detail_col4.metric(
+    "Öncelik",
+    f"{selected_row['portfoy_oncelik_skoru']:.1f}/100",
+)
+
+
+st.markdown(
+    f"""
+    **{selected_row['mahalle']}**
+    
+    {selected_row['portfoy_tipi']} ·
+    {selected_row['ilan_turu']} ·
+    {selected_row['oda_sayisi']}
+    """
+)
+
+
+detail_left, detail_right = st.columns(2)
+
+
+with detail_left:
+
+    st.markdown("### ⚠️ Dikkat Gerektiren Noktalar")
+
+    if reasons:
+
+        for reason in reasons:
+            st.warning(reason)
+
+    else:
+
+        st.success(
+            "Bu portföy için belirgin bir risk tespit edilmedi."
+        )
+
+
+with detail_right:
+
+    st.markdown("### 💡 Önerilen Aksiyon")
+
+    st.info(action)
+
+
+st.divider()
 
 # ---------------------------------------------------------
 # KPI

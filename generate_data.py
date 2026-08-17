@@ -238,28 +238,73 @@ def main():
 # ---------------------------------------------------------
 
 def calculate_priority_score(df):
+  def calculate_priority_score(df):
     score = pd.Series(0.0, index=df.index)
 
-    # 1. İlan yaşı
-    score += (
-        df["ilan_yasi_gun"].clip(upper=120) / 120 * 40
+    # -----------------------------------------------------
+    # 1. İLAN YAŞI — maksimum 40 puan
+    # -----------------------------------------------------
+
+    age_score = (
+        df["ilan_yasi_gun"] / 180 * 40
+    ).clip(
+        lower=0,
+        upper=40,
     )
 
-    # 2. Fiyat değişimi
-    price_change = df["fiyat_degisimi_yuzde"]
+    score += age_score
 
-    # Fiyatı düşen ilanlara daha yüksek öncelik
-    score += (
-        -price_change
-    ).clip(lower=0, upper=30)
+    # -----------------------------------------------------
+    # 2. FİYAT DEĞİŞİMİ — maksimum 30 puan
+    # -----------------------------------------------------
 
-    # 3. Uzun süredir fiyatı değişmeyen ilanlar
-    no_update = df["son_fiyat_guncelleme"].isna()
+    price_change_score = (
+        -df["fiyat_degisimi_yuzde"] / 15 * 30
+    ).clip(
+        lower=0,
+        upper=30,
+    )
+
+    score += price_change_score
+
+    # -----------------------------------------------------
+    # 3. FİYAT GÜNCELLEME YOK — 10 puan
+    # -----------------------------------------------------
+
+    no_update = (
+        df["son_fiyat_guncelleme"].isna()
+    )
 
     score += no_update.astype(int) * 10
 
-    # 0-100 arasında tut
-    return score.clip(lower=0, upper=100).round(1)
+    # -----------------------------------------------------
+    # 4. YÜKSEK FİYAT — maksimum 20 puan
+    # -----------------------------------------------------
+
+    neighborhood_avg = (
+        df.groupby(
+            ["mahalle", "ilan_turu"]
+        )["fiyat_m2"]
+        .transform("mean")
+    )
+
+    price_ratio = (
+        df["fiyat_m2"] / neighborhood_avg
+    )
+
+    expensive_score = (
+        (price_ratio - 1) * 100
+    ).clip(
+        lower=0,
+        upper=20,
+    )
+
+    score += expensive_score
+
+    return score.clip(
+        lower=0,
+        upper=100,
+    ).round(1)
 
 
 if __name__ == "__main__":
